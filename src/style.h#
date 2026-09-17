@@ -1,0 +1,99 @@
+pub struct ProgressStyle is
+    pub theme:    string   ;; nazwa motywu z theme.h# (albo własna obsłużona w bar.h#)
+    pub template: string   ;; szablon renderowania — patrz template.h#
+    pub spinner:  string   ;; nazwa zestawu klatek ze spinner_frames.h#
+    pub width:    int      ;; szerokość samego wypełnienia paska
+    pub color:    bool     ;; czy używać kolorów ANSI
+end
+
+pub fn style_default() -> ProgressStyle is
+    return ProgressStyle {
+        theme: "default", template: "{bar} {percent}% {msg}",
+        spinner: "dots", width: 24, color: true,
+    }
+end
+
+impl ProgressStyle is
+    pub fn with_theme(self, name: string) -> ProgressStyle is
+        return ProgressStyle {
+            theme: name, template: self.template, spinner: self.spinner,
+            width: self.width, color: self.color,
+        }
+    end
+
+    pub fn with_template(self, tpl: string) -> ProgressStyle is
+        return ProgressStyle {
+            theme: self.theme, template: tpl, spinner: self.spinner,
+            width: self.width, color: self.color,
+        }
+    end
+
+    pub fn with_spinner(self, name: string) -> ProgressStyle is
+        return ProgressStyle {
+            theme: self.theme, template: self.template, spinner: name,
+            width: self.width, color: self.color,
+        }
+    end
+
+    pub fn with_width(self, w: int) -> ProgressStyle is
+        return ProgressStyle {
+            theme: self.theme, template: self.template, spinner: self.spinner,
+            width: w, color: self.color,
+        }
+    end
+
+    pub fn with_color(self, enabled: bool) -> ProgressStyle is
+        return ProgressStyle {
+            theme: self.theme, template: self.template, spinner: self.spinner,
+            width: self.width, color: enabled,
+        }
+    end
+
+    pub fn no_color(self) -> ProgressStyle is
+        return self.with_color(false)
+    end
+end
+
+;; ── Akcesory pól ─────────────────────────────────────────────────────
+;; [WAŻNE] Tak samo jak `core::state_total`/itd. w core.h# — moduły spoza
+;; style.h# (bar.h#, template.h#, builder.h#...) czytają pola
+;; `ProgressStyle` przez te funkcje, nie bezpośrednio przez `.pole`, żeby
+;; uniknąć znanego problemu z odczytem pól structa zadeklarowanego w innym
+;; module (zob. długi komentarz przy `core::state_total` w core.h#).
+pub fn style_theme(s: ProgressStyle)       -> string is return s.theme end
+pub fn style_template(s: ProgressStyle)    -> string is return s.template end
+pub fn style_spinner_name(s: ProgressStyle) -> string is return s.spinner end
+pub fn style_width(s: ProgressStyle)       -> int    is return s.width end
+pub fn style_color(s: ProgressStyle)       -> bool   is return s.color end
+
+;; ── Gotowe presety (jak `ProgressStyle::default_bar()` w indicatif) ─────
+
+pub fn style_bar() -> ProgressStyle is
+    return style_default()
+end
+
+pub fn style_bar_with_eta() -> ProgressStyle is
+    return style_default().with_template("{msg} {bar} {pos}/{len} ({percent}%) ETA {eta}")
+end
+
+pub fn style_spinner() -> ProgressStyle is
+    return style_default().with_template("{spinner} {msg}").with_spinner("dots")
+end
+
+pub fn style_download() -> ProgressStyle is
+    return style_default()
+        .with_theme("blocks")
+        .with_template("{msg}\n{bar} {bytes}/{total_bytes}  {speed}/s  ETA {eta}")
+end
+
+pub fn style_minimal() -> ProgressStyle is
+    return style_default().with_theme("minimal").with_template("{bar} {percent}%")
+end
+
+pub fn style_counter() -> ProgressStyle is
+    return style_default().with_template("{msg} [{pos}/{len}]")
+end
+
+pub fn style_cargo() -> ProgressStyle is
+    return style_default().with_theme("cargo").with_template("{label} {bar} {percent}%  {msg}")
+end
