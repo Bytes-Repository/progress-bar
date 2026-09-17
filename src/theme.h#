@@ -1,0 +1,234 @@
+pub fn custom_theme(open: string, close: string, fill: string, empty: string, arrow: string) -> string is
+    return "custom:" + open + "|" + close + "|" + fill + "|" + empty + "|" + arrow
+end
+
+fn is_custom(theme: string) -> bool is
+    return string_starts_with(theme, "custom:")
+end
+
+;; idx: 0=open 1=close 2=fill 3=empty 4=arrow
+fn custom_component(theme: string, idx: int) -> string is
+    let body: string = theme[7..theme.len()]    ;; po "custom:"
+    let parts: [string] = string_split(body, "|")
+    if idx >= array_len(parts) is return "" end
+    return parts[idx]
+end
+
+pub fn theme_open(theme: string) -> string is
+    if is_custom(theme) is return custom_component(theme, 0) end
+    let ch: string = match theme is
+        "arrow" | "cargo" | "blocks" | "ascii" | "fine" | "fine2" | "github" | "retro" => "["
+        "rough"                                                                        => "("
+        "material"                                                                     => "⟦"
+        "thin" | "shade"                                                               => "│"
+        "hearts" | "stars"                                                             => "❰"
+        "circles"                                                                      => "("
+        "hash"                                                                         => "["
+        "double"                                                                       => "╢"
+        "minimal"                                                                      => ""
+        _                                                                              => "<"    ;; "default", "dotted", "equals"
+    end
+    return ch
+end
+
+pub fn theme_close(theme: string) -> string is
+    if is_custom(theme) is return custom_component(theme, 1) end
+    let ch: string = match theme is
+        "arrow" | "cargo" | "blocks" | "ascii" | "fine" | "fine2" | "github" | "retro" => "]"
+        "rough"                                                                        => ")"
+        "material"                                                                     => "⟧"
+        "thin" | "shade"                                                               => "│"
+        "hearts" | "stars"                                                             => "❱"
+        "circles"                                                                      => ")"
+        "hash"                                                                         => "]"
+        "double"                                                                       => "╟"
+        "minimal"                                                                      => ""
+        _                                                                              => ">"
+    end
+    return ch
+end
+
+pub fn theme_fill(theme: string) -> string is
+    if is_custom(theme) is return custom_component(theme, 2) end
+    let ch: string = match theme is
+        "arrow"    => "-"
+        "cargo"    => "="
+        "dotted"   => "-"
+        "equals"   => "="
+        "blocks"   => "█"
+        "ascii"    => "#"
+        "fine"     => "▓"
+        "fine2"    => "■"
+        "rough"    => "~"
+        "github"   => "▓"
+        "retro"    => "="
+        "material" => "▰"
+        "thin"     => "─"
+        "hearts"   => "♥"
+        "stars"    => "★"
+        "circles"  => "●"
+        "hash"     => "#"
+        "shade"    => "█"
+        "double"   => "═"
+        "minimal"  => "▮"
+        _          => "#"    ;; "default"
+    end
+    return ch
+end
+
+pub fn theme_empty(theme: string) -> string is
+    if is_custom(theme) is return custom_component(theme, 3) end
+    let ch: string = match theme is
+        "arrow"    => " "
+        "cargo"    => " "
+        "dotted"   => "."
+        "equals"   => "-"
+        "blocks"   => "░"
+        "ascii"    => "."
+        "fine"     => "░"
+        "fine2"    => "·"
+        "rough"    => "·"
+        "github"   => "░"
+        "retro"    => "_"
+        "material" => "▱"
+        "thin"     => "·"
+        "hearts"   => "·"
+        "stars"    => "·"
+        "circles"  => "○"
+        "hash"     => "·"
+        "shade"    => "▒"
+        "double"   => "─"
+        "minimal"  => "▯"
+        _          => "-"    ;; "default"
+    end
+    return ch
+end
+
+pub fn theme_arrowhead(theme: string) -> string is
+    if is_custom(theme) is return custom_component(theme, 4) end
+    let ch: string = match theme is
+        "arrow" | "cargo" | "retro" => ">"
+        _                           => ""
+    end
+    return ch
+end
+
+pub fn theme_names() -> [string] is
+    return [
+        "default", "arrow", "dotted", "cargo", "equals", "blocks",
+        "ascii", "fine", "fine2", "rough", "github", "retro",
+        "material", "thin", "hearts", "stars", "circles", "hash",
+        "shade", "double", "minimal",
+    ]
+end
+
+;; Renderuje sam "tor" paska (bez etykiet/procentów) dla danego motywu:
+;; `filled` znaków wypełnienia (z grotem strzałki na końcu, jeśli motyw go
+;; ma) + `width - filled` znaków pustych, otoczone open/close, w kolorze
+;; cyjan (jak `bytes`). `colored = false` daje czysty tekst — przydatne do
+;; logów, testów albo terminali bez ANSI.
+pub fn theme_render_track(theme: string, filled: int, width: int, colored: bool) -> string is
+    let mut f: int = filled
+    if f < 0 is f = 0 end
+    if f > width is f = width end
+    let empty: int = width - f
+
+    let head: string = theme_arrowhead(theme)
+    let mut fill_str: string = ""
+    if head != "" && f > 0 is
+        fill_str = string_repeat(theme_fill(theme), f - 1) + head
+    else is
+        fill_str = string_repeat(theme_fill(theme), f)
+    end
+    let empty_str: string = string_repeat(theme_empty(theme), empty)
+    let open_ch: string = theme_open(theme)
+    let close_ch: string = theme_close(theme)
+
+    if !colored is
+        return open_ch + fill_str + empty_str + close_ch
+    end
+
+    return "\x1b[36m" + open_ch + "\x1b[0m\x1b[36m\x1b[1m" + fill_str + "\x1b[0m\x1b[2m" +
+           empty_str + "\x1b[0m\x1b[36m" + close_ch + "\x1b[0m"
+end
+
+;; Wariant "nieokreślony" (indeterminate) — pojedyncza podświetlona komórka
+;; odbijająca się od ściany do ściany toru (ping-pong), tak jak animacja
+;; kompilacji w `bytes` (zob. bar_indeterminate_line w progress.h#), tylko
+;; w dowolnym motywie z tej tabeli.
+pub fn theme_render_indeterminate(theme: string, width: int, tick: int, colored: bool) -> string is
+    let period: int = if width <= 1 then 1 else (width - 1) * 2
+    let phase:  int = tick % period
+    let pos:    int = if phase < width then phase else period - phase
+
+    let mut track: string = ""
+    let mut i: int = 0
+    while i < width is
+        if i == pos is
+            track = track + theme_fill(theme)
+        else is
+            track = track + theme_empty(theme)
+        end
+        i += 1
+    end
+
+    let open_ch: string = theme_open(theme)
+    let close_ch: string = theme_close(theme)
+    if !colored is
+        return open_ch + track + close_ch
+    end
+    return "\x1b[36m" + open_ch + "\x1b[0m\x1b[36m\x1b[1m" + track + "\x1b[0m\x1b[36m" + close_ch + "\x1b[0m"
+end
+
+pub fn theme_exists(name: string) -> bool is
+    let names: [string] = theme_names()
+    let n: int = array_len(names)
+    let mut i: int = 0
+    while i < n is
+        if names[i] == name is return true end
+        i += 1
+    end
+    return false
+end
+
+;; ── Testy ────────────────────────────────────────────────────────────
+use "std -> test" from "test"
+
+#[test]
+fn test_theme_default_chars() is
+    assert_eq(theme_open("default"), "<")
+    assert_eq(theme_close("default"), ">")
+    assert_eq(theme_fill("default"), "#")
+    assert_eq(theme_empty("default"), "-")
+end
+
+#[test]
+fn test_theme_unknown_falls_back_to_default() is
+    assert_eq(theme_fill("nie-takie-cos"), "#")
+    assert_eq(theme_open("nie-takie-cos"), "<")
+end
+
+#[test]
+fn test_theme_names_contains_bytes_builtins() is
+    assert_true(theme_exists("default"))
+    assert_true(theme_exists("arrow"))
+    assert_true(theme_exists("dotted"))
+    assert_true(theme_exists("cargo"))
+    assert_true(theme_exists("equals"))
+    assert_true(theme_exists("blocks"))
+end
+
+#[test]
+fn test_custom_theme_roundtrip() is
+    let t: string = custom_theme("{", "}", "@", ".", "")
+    assert_eq(theme_open(t), "{")
+    assert_eq(theme_close(t), "}")
+    assert_eq(theme_fill(t), "@")
+    assert_eq(theme_empty(t), ".")
+end
+
+#[test]
+fn test_render_track_full_and_empty() is
+    assert_eq(theme_render_track("ascii", 0, 10, false), "[..........]")
+    assert_eq(theme_render_track("ascii", 10, 10, false), "[##########]")
+end
