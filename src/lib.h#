@@ -1,1 +1,87 @@
+mod core
+mod theme
+mod spinner_frames
+mod human
+mod eta
+mod style
+mod template
+mod bar
+mod spinner
+mod multi
+mod builder
 
+;; lib.h# — punkt wejścia pakietu `progressbar` (patrz `Bytes.hk`,
+;; `entry => src/lib.h#`). Samo `mod ...` powyżej wciąga całą bibliotekę
+;; do jednej jednostki kompilacji; poniżej kilka "szybkich skrótów" na
+;; najczęstsze przypadki, żeby nie trzeba było za każdym razem osobno
+;; budować `ProgressStyle` — pełne, konfigurowalne API leży w
+;; poszczególnych modułach (`bar::`, `spinner::`, `style::`, `multi::`,
+;; `builder::`, `theme::`, `template::`...).
+;;
+;; ── Najszybszy start ─────────────────────────────────────────────────
+;;
+;;   use "progressbar -> lib" from "pb"
+;;
+;;   fn main() is
+;;       let mut b = pb::quick_bar(100, "Kopiowanie plików")
+;;       let mut i = 0
+;;       while i < 100 is
+;;           b = b.inc(1)
+;;           b.draw()
+;;           i += 1
+;;       end
+;;       b.finish("Skopiowano 100 plików")
+;;   end
+;;
+;; (Jeśli import międzypakietowy nie jest jeszcze wspierany w Twojej wersji
+;; `bytes`, po prostu skopiuj katalog `src/` do swojego projektu i zamiast
+;; `use ...` daj `mod bar` / `mod spinner` / ... tam, gdzie ich używasz —
+;; patrz README.md, sekcja "Instalacja".)
+
+;; Zwykły pasek postępu z domyślnym stylem ("default" motyw z bytes).
+pub fn quick_bar(total: int, label: string) -> bar::ProgressBar is
+    return bar::bar_new(total, label)
+end
+
+;; Pasek z konkretnym, wbudowanym motywem (patrz theme::theme_names()).
+pub fn quick_bar_themed(total: int, label: string, theme_name: string) -> bar::ProgressBar is
+    return builder::new_bar(total, label).theme(theme_name).build()
+end
+
+;; Pasek do pobierania plików: {msg} + {bar} + bajty + prędkość + ETA.
+pub fn quick_download_bar(total_bytes: int, label: string) -> bar::ProgressBar is
+    return builder::new_bar(total_bytes, label).template(
+        "{msg}\n{bar} {bytes}/{total_bytes}  {speed}/s  ETA {eta}"
+    ).theme("blocks").build()
+end
+
+;; Spinner z domyślnym stylem "dots" (identyczny wizualnie z bytes).
+pub fn quick_spinner(msg: string) -> spinner::Spinner is
+    return spinner::spinner_new(msg)
+end
+
+;; Spinner z wybranym zestawem klatek (patrz spinner_frames::spinner_names()).
+pub fn quick_spinner_styled(msg: string, frame_set: string) -> spinner::Spinner is
+    return spinner::spinner_with_style(msg, frame_set)
+end
+
+;; Pusty kontener na wiele pasków naraz — patrz multi.h# po pełne API.
+pub fn quick_multi() -> multi::MultiProgress is
+    return multi::multi_new()
+end
+
+;; Lista wszystkich wbudowanych motywów paska (do np. własnego selektora
+;; w stylu `bytes settings`).
+pub fn builtin_themes() -> [string] is
+    return theme::theme_names()
+end
+
+;; Lista wszystkich wbudowanych zestawów klatek spinnera.
+pub fn builtin_spinners() -> [string] is
+    return spinner_frames::spinner_names()
+end
+
+;; Wersja biblioteki (przydatne w `--version`/diagnostyce własnych narzędzi).
+pub fn version() -> string is
+    return "1.0.0"
+end
