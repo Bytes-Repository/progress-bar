@@ -1,0 +1,121 @@
+mod core
+mod theme
+mod human
+mod spinner_frames
+mod eta
+mod style
+
+;; template.h# — wypełnia szablon tekstowy (`ProgressStyle.template`)
+;; rzeczywistymi wartościami z bieżącego stanu paska/spinnera.
+;;
+;; Obsługiwane placeholdery (dowolna kombinacja, dowolna kolejność):
+;;
+;;   {bar}          — sam pasek (tor wypełnienia) w wybranym motywie
+;;   {spinner}      — bieżąca klatka spinnera
+;;   {label}        — stały tytuł zadania
+;;   {msg}          — dynamiczny komunikat (set_message)
+;;   {pos}          — bieżąca pozycja (current)
+;;   {len}          — total
+;;   {percent}      — 0-100
+;;   {percent_bar}  — alias {bar}, wygodny gdy szablon czyta się jak zdanie
+;;   {elapsed}      — czas od startu, np. "3.4s" / "1m 02s"
+;;   {eta}          — szacowany czas do końca (proste tempo od startu)
+;;   {bytes}        — {pos} sformatowane jako rozmiar (B/KB/MB/...)
+;;   {total_bytes}  — {len} sformatowane jako rozmiar
+;;   {speed}        — tempo (jednostek/s) sformatowane jak rozmiar, np. "3.4 MB"
+;;
+;; Nieznany/niepodmieniony placeholder zostaje w tekście bez zmian — ułatwia
+;; to debugowanie własnych szablonów (literówka jest od razu widoczna).
+
+;; Renderuje sam pasek — pełny (procentowy) gdy znamy `total`, animację
+;; ping-pong (nieokreślony) gdy `total <= 0`. Jedno miejsce, z którego
+;; korzystają zarówno {bar}, jak i {percent_bar}.
+fn render_bar_only(state: core::ProgressState, theme_name: string, width: int, colored: bool) -> string is
+    if core::state_is_indeterminate(state) is
+        return theme::theme_render_indeterminate(theme_name, width, core::state_tick_count(state), colored)
+    end
+    let filled: int = (core::state_current(state) * width) / core::state_total(state)
+    return theme::theme_render_track(theme_name, filled, width, colored)
+end
+
+;; Wygodny wariant przyjmujący cały `ProgressStyle` ze style.h# naraz.
+pub fn render(tpl: string, state: core::ProgressState, sty: style::ProgressStyle) -> string is
+    return render_full(tpl, state, style::style_theme(sty), style::style_spinner_name(sty), style::style_width(sty), style::style_color(sty))
+end
+
+;; Wariant "rozpakowany" — przydatny, gdy nie chcesz zależności od
+;; `style::ProgressStyle` (np. renderujesz ręcznie dobrane wartości).
+pub fn render_full(tpl: string, state: core::ProgressState, theme_name: string, spinner_name: string, width: int, colored: bool) -> string is
+    let mut out: string = tpl
+
+    if string_contains(out, "{bar}") is
+        out = string_replace_all(out, "{bar}", render_bar_only(state, theme_name, width, colored))
+    end
+    if string_contains(out, "{percent_bar}") is
+        out = string_replace_all(out, "{percent_bar}", render_bar_only(state, theme_name, width, colored))
+    end
+    if string_contains(out, "{spinner}") is
+        let frames: [string] = spinner_frames::spinner_frames(spinner_name)
+        let frame: string = spinner_frames::spinner_frame_at(frames, core::state_tick_count(state))
+        out = string_replace_all(out, "{spinner}", frame)
+    end
+    if string_contains(out, "{label}") is
+        out = string_replace_all(out, "{label}", core::state_label(state))
+    end
+    if string_contains(out, "{msg}") is
+        out = string_replace_all(out, "{msg}", core::state_message(state))
+    end
+    if string_contains(out, "{pos}") is
+        out = string_replace_all(out, "{pos}", to_string(core::state_current(state)))
+    end
+    if string_contains(out, "{len}") is
+        out = string_replace_all(out, "{len}", to_string(core::state_total(state)))
+    end
+    if string_contains(out, "{percent}") is
+        out = string_replace_all(out, "{percent}", to_string(core::state_percent(state)))
+    end
+    if string_contains(out, "{elapsed}") is
+        out = string_replace_all(out, "{elapsed}", human::format_duration_ms(core::state_elapsed_ms(state)))
+    end
+    if string_contains(out, "{eta}") is
+        let eta_ms: int = eta::eta_simple_ms(state)
+        let eta_str: string = if eta_ms < 0 then "?" else human::format_duration_ms(eta_ms)
+        out = string_replace_all(out, "{eta}", eta_str)
+    end
+    if string_contains(out, "{bytes}") is
+        out = string_replace_all(out, "{bytes}", human::format_bytes(core::state_current(state)))
+    end
+    if string_contains(out, "{total_bytes}") is
+        out = string_replace_all(out, "{total_bytes}", human::format_bytes(core::state_total(state)))
+    end
+    if string_contains(out, "{speed}") is
+        out = string_replace_all(out, "{speed}", human::format_rate(core::state_rate_per_sec(state)))
+    end
+
+    return out
+end
+
+;; ── Testy ────────────────────────────────────────────────────────────
+use "std -> test" from "test"
+
+#[test]
+fn test_render_full_percent_and_pos() is
+    let s: core::ProgressState = core::state_set(core::state_new(50, "Test"), 25)
+    let out: string = render_full("{pos}/{len} ({percent}%)", s, "ascii", "dots", 10, false)
+    assert_eq(out, "25/50 (50%)")
+end
+
+#[test]
+fn test_render_full_message_and_label() is
+    let s0: core::ProgressState = core::state_new(10, "Zadanie")
+    let s: core::ProgressState = core::state_set_message(s0, "działam")
+    let out: string = render_full("{label}: {msg}", s, "ascii", "dots", 10, false)
+    assert_eq(out, "Zadanie: działam")
+end
+
+#[test]
+fn test_render_full_bar_width() is
+    let s: core::ProgressState = core::state_set(core::state_new(10, ""), 5)
+    let out: string = render_full("{bar}", s, "ascii", "dots", 10, false)
+    assert_eq(out, "[#####.....]")
+end
