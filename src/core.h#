@@ -1,0 +1,140 @@
+pub struct ProgressState is
+    pub total:      int      ;; 0 = tryb nieokreślony (indeterminate / spinner)
+    pub current:    int
+    pub width:      int      ;; szerokość samego wypełnienia paska
+    pub label:      string   ;; stały tytuł zadania, np. "Kompilacja"
+    pub message:    string   ;; dynamiczny komunikat (set_message)
+    pub started_at: int      ;; unix ms — do liczenia elapsed/ETA/prędkości
+    pub finished:   bool
+    pub tick:       int      ;; licznik klatek — animacje, spinnery
+end
+
+pub fn state_new(total: int, label: string) -> ProgressState is
+    return ProgressState {
+        total: total, current: 0, width: 24, label: label, message: "",
+        started_at: time_ms(), finished: false, tick: 0,
+    }
+end
+
+pub fn state_with_width(s: ProgressState, width: int) -> ProgressState is
+    return ProgressState {
+        total: s.total, current: s.current, width: width, label: s.label,
+        message: s.message, started_at: s.started_at, finished: s.finished, tick: s.tick,
+    }
+end
+
+;; Ustawia bieżącą pozycję (obcinaną do [0, total] gdy total > 0).
+pub fn state_set(s: ProgressState, pos: int) -> ProgressState is
+    let mut clamped: int = pos
+    if clamped < 0 is clamped = 0 end
+    if s.total > 0 && clamped > s.total is clamped = s.total end
+    return ProgressState {
+        total: s.total, current: clamped, width: s.width, label: s.label,
+        message: s.message, started_at: s.started_at, finished: s.finished, tick: s.tick,
+    }
+end
+
+pub fn state_inc(s: ProgressState, n: int) -> ProgressState is
+    return state_set(s, s.current + n)
+end
+
+pub fn state_set_message(s: ProgressState, msg: string) -> ProgressState is
+    return ProgressState {
+        total: s.total, current: s.current, width: s.width, label: s.label,
+        message: msg, started_at: s.started_at, finished: s.finished, tick: s.tick,
+    }
+end
+
+;; Zmienia `total` w locie — np. gdy prawdziwy rozmiar pliku poznajemy
+;; dopiero po nawiązaniu połączenia, a pasek już rysowaliśmy jako
+;; nieokreślony.
+pub fn state_set_total(s: ProgressState, total: int) -> ProgressState is
+    return ProgressState {
+        total: total, current: s.current, width: s.width, label: s.label,
+        message: s.message, started_at: s.started_at, finished: s.finished, tick: s.tick,
+    }
+end
+
+pub fn state_set_label(s: ProgressState, label: string) -> ProgressState is
+    return ProgressState {
+        total: s.total, current: s.current, width: s.width, label: label,
+        message: s.message, started_at: s.started_at, finished: s.finished, tick: s.tick,
+    }
+end
+
+;; Przesuwa licznik klatek o 1 — używane przez spinnery i paski
+;; nieokreślone (indeterminate) do wyboru kolejnej klatki animacji.
+pub fn state_tick(s: ProgressState) -> ProgressState is
+    return ProgressState {
+        total: s.total, current: s.current, width: s.width, label: s.label,
+        message: s.message, started_at: s.started_at, finished: s.finished, tick: s.tick + 1,
+    }
+end
+
+pub fn state_finish(s: ProgressState) -> ProgressState is
+    let done: int = if s.total > 0 then s.total else s.current
+    return ProgressState {
+        total: s.total, current: done, width: s.width, label: s.label,
+        message: s.message, started_at: s.started_at, finished: true, tick: s.tick,
+    }
+end
+
+;; Kończy pasek bez "domykania" go do 100% — do sygnalizowania błędu
+;; / przerwania (odpowiednik `abandon()` z indicatif).
+pub fn state_abandon(s: ProgressState) -> ProgressState is
+    return ProgressState {
+        total: s.total, current: s.current, width: s.width, label: s.label,
+        message: s.message, started_at: s.started_at, finished: true, tick: s.tick,
+    }
+end
+
+pub fn state_percent(s: ProgressState) -> int is
+    if s.total <= 0 is return 0 end
+    let mut p: int = (s.current * 100) / s.total
+    if p > 100 is p = 100 end
+    if p < 0 is p = 0 end
+    return p
+end
+
+pub fn state_is_indeterminate(s: ProgressState) -> bool is
+    return s.total <= 0
+end
+
+pub fn state_is_done(s: ProgressState) -> bool is
+    if s.finished is return true end
+    if s.total > 0 && s.current >= s.total is return true end
+    return false
+end
+
+pub fn state_elapsed_ms(s: ProgressState) -> int is
+    return time_ms() - s.started_at
+end
+
+;; Elementów na sekundę (uśrednione od startu — proste i stabilne;
+;; wygładzanie "ostatnich N próbek" robi eta.h#'s `speed_smoothed`).
+pub fn state_rate_per_sec(s: ProgressState) -> f64 is
+    let elapsed: int = state_elapsed_ms(s)
+    if elapsed <= 0 || s.current <= 0 is return 0.0 end
+    return (s.current + 0.0) / ((elapsed + 0.0) / 1000.0)
+end
+
+;; ── Akcesory pól ─────────────────────────────────────────────────────
+;; [WAŻNE] Moduły spoza core.h# (bar.h#, template.h#, spinner.h#, eta.h#...)
+;; NIE czytają `.total`/`.current`/... bezpośrednio z wartości typu
+;; `ProgressState` — czytają przez te funkcje. To dokładnie ten sam wzorzec
+;; co `reg_name`/`reg_git` w bytes/src/registry.h# i `member_success`/
+;; `member_bin_path` w bytes/src/progress.h#: odczyt pola structa
+;; zadeklarowanego w INNYM module bywa (w tej wersji interpretera H#)
+;; rozwiązywany przez dopasowanie nazwy pola po wszystkich znanych
+;; structach zamiast po zadeklarowanym typie — co psuje się, gdy dwa
+;; structy w różnych modułach mają pole o tej samej nazwie (tu akurat
+;; `ProgressState.width` i `style::ProgressStyle.width` kolidują).
+;; Akcesor w TYM SAMYM module co struct zawsze trafia we właściwe pole.
+pub fn state_total(s: ProgressState)      -> int    is return s.total end
+pub fn state_current(s: ProgressState)    -> int    is return s.current end
+pub fn state_width(s: ProgressState)      -> int    is return s.width end
+pub fn state_label(s: ProgressState)      -> string is return s.label end
+pub fn state_message(s: ProgressState)    -> string is return s.message end
+pub fn state_started_at(s: ProgressState) -> int    is return s.started_at end
+pub fn state_finished(s: ProgressState)   -> bool   is return s.finished end
+pub fn state_tick_count(s: ProgressState) -> int    is return s.tick end
