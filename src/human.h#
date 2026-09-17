@@ -1,0 +1,108 @@
+pub fn format_bytes(n: int) -> string is
+    if n < 1024 is return to_string(n) + " B" end
+    let units: [string] = ["KB", "MB", "GB", "TB", "PB"]
+    let mut value: f64 = n + 0.0
+    let mut unit_idx: int = 0
+    let unit_count: int = array_len(units)
+    while value >= 1024.0 && unit_idx < unit_count - 1 is
+        value = value / 1024.0
+        unit_idx += 1
+    end
+    return format_f64_1(value) + " " + units[unit_idx]
+end
+
+;; Formatuje "prędkość" (jednostek na sekundę) — reużywa format_bytes,
+;; więc "{speed}/s" dla pobierania pliku wygląda jak "3.4 MB/s".
+pub fn format_rate(per_sec: f64) -> string is
+    return format_bytes(__builtin_conv_float_to_int(per_sec))
+end
+
+;; Formatuje milisekundy jako "1.2s" / "3m 05s" / "1h 02m" — ETA i elapsed
+;; w tej bibliotece zawsze przechodzą przez tę samą funkcję, żeby paski i
+;; spinnery pokazywały czas w spójnym formacie.
+pub fn format_duration_ms(ms: int) -> string is
+    if ms < 0 is return "0s" end
+    if ms < 1000 is return to_string(ms) + "ms" end
+
+    let total_secs: int = ms / 1000
+    if total_secs < 60 is
+        let cents: int = (ms % 1000) / 100
+        return to_string(total_secs) + "." + to_string(cents) + "s"
+    end
+
+    let mins: int = total_secs / 60
+    let secs: int = total_secs % 60
+    if mins < 60 is
+        return to_string(mins) + "m " + pad2(secs) + "s"
+    end
+
+    let hours: int = mins / 60
+    let rem_mins: int = mins % 60
+    return to_string(hours) + "h " + pad2(rem_mins) + "m"
+end
+
+fn pad2(n: int) -> string is
+    if n < 10 is return "0" + to_string(n) end
+    return to_string(n)
+end
+
+;; Zaokrągla do jednego miejsca po przecinku i formatuje jako string —
+;; unika zależności od formatowania f64 z konwersji `to_string` wprost
+;; (które w H# może dawać zmienną liczbę cyfr).
+pub fn format_f64_1(v: f64) -> string is
+    let scaled: int = __builtin_conv_float_to_int(v * 10.0 + 0.5)
+    let whole: int = scaled / 10
+    let frac: int = scaled % 10
+    return to_string(whole) + "." + to_string(frac)
+end
+
+;; "1 234 567" — grupowanie tysięcy spacją (czytelniejsze niż gołe cyfry
+;; w licznikach typu {pos}/{len} dla dużych wartości).
+pub fn format_thousands(n: int) -> string is
+    let mut v: int = n
+    let mut neg: bool = false
+    if v < 0 is
+        neg = true
+        v = -v
+    end
+
+    let s: string = to_string(v)
+    let len: int = s.len()
+    let mut out: string = ""
+    let mut count: int = 0
+    let mut i: int = len - 1
+    while i >= 0 is
+        out = s[i..i + 1] + out
+        count += 1
+        if count % 3 == 0 && i > 0 is out = " " + out end
+        i -= 1
+    end
+    if neg is return "-" + out end
+    return out
+end
+
+;; ── Testy ────────────────────────────────────────────────────────────
+;; `bytes test` (albo `h# check`) znajduje te funkcje po atrybucie
+;; `#[test]` — dokładnie tak samo jak w przykładach z README H#.
+use "std -> test" from "test"
+
+#[test]
+fn test_format_bytes() is
+    assert_eq(format_bytes(512), "512 B")
+    assert_eq(format_bytes(1024), "1.0 KB")
+    assert_eq(format_bytes(1024 * 1024), "1.0 MB")
+end
+
+#[test]
+fn test_format_duration_ms() is
+    assert_eq(format_duration_ms(500), "500ms")
+    assert_eq(format_duration_ms(1500), "1.5s")
+    assert_eq(format_duration_ms(65000), "1m 05s")
+end
+
+#[test]
+fn test_format_thousands() is
+    assert_eq(format_thousands(999), "999")
+    assert_eq(format_thousands(1000), "1 000")
+    assert_eq(format_thousands(1234567), "1 234 567")
+end
