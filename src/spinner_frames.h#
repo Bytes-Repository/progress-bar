@@ -1,0 +1,71 @@
+pub fn spinner_frames(name: string) -> [string] is
+    let frames: [string] = match name is
+        "dots"           => ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        "dots2"          => ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
+        "dots3"          => ["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"]
+        "line"           => ["-", "\\", "|", "/"]
+        "line2"          => ["⎯", "\\", "|", "/"]
+        "pipe"           => ["┤", "┘", "┴", "└", "├", "┌", "┬", "┐"]
+        "star"           => ["✶", "✸", "✹", "✺", "✹", "✷"]
+        "star2"          => ["+", "x", "*"]
+        "flip"           => ["_", "_", "_", "-", "`", "`", "'", "´", "-", "_", "_", "_"]
+        "hamburger"      => ["☱", "☲", "☴"]
+        "grow_vertical"  => ["▁", "▃", "▄", "▅", "▆", "▇", "▆", "▅", "▄", "▃"]
+        "grow_horiz"     => ["▏", "▎", "▍", "▌", "▋", "▊", "▉", "▊", "▋", "▌", "▍", "▎"]
+        "balloon"        => [".", "o", "O", "@", "*", " "]
+        "noise"          => ["▓", "▒", "░"]
+        "bounce"         => ["⠁", "⠂", "⠄", "⠂"]
+        "box_bounce"     => ["▖", "▘", "▝", "▗"]
+        "triangle"       => ["◢", "◣", "◤", "◥"]
+        "arc"            => ["◜", "◠", "◝", "◞", "◡", "◟"]
+        "circle"         => ["◡", "⊙", "◠"]
+        "circle_quarter" => ["◴", "◷", "◶", "◵"]
+        "circle_half"    => ["◐", "◓", "◑", "◒"]
+        "square_corners" => ["◰", "◳", "◲", "◱"]
+        "toggle"         => ["⊶", "⊷"]
+        "arrow"          => ["←", "↖", "↑", "↗", "→", "↘", "↓", "↙"]
+        "arrow_circle"   => ["⇐", "⇖", "⇑", "⇗", "⇒", "⇘", "⇓", "⇙"]
+        "bouncing_bar"   => ["[    ]", "[=   ]", "[==  ]", "[=== ]", "[ ===]", "[  ==]", "[   =]", "[    ]", "[   =]", "[  ==]", "[ ===]", "[====]", "[=== ]", "[==  ]", "[=   ]"]
+        "bouncing_ball"  => ["( ●    )", "(  ●   )", "(   ●  )", "(    ● )", "(     ●)", "(    ● )", "(   ●  )", "(  ●   )", "( ●    )", "(●     )"]
+        "clock"          => ["🕛", "🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚"]
+        "moon"           => ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"]
+        "earth"          => ["🌍", "🌎", "🌏"]
+        "runner"         => ["🚶", "🏃"]
+        "weather"        => ["☀️", "⛅", "☁️", "🌧️", "⛈️", "🌨️"]
+        "hearts"         => ["💛", "💙", "💜", "💚", "❤️"]
+        "point"          => ["∙∙∙", "●∙∙", "∙●∙", "∙∙●", "∙∙∙"]
+        "layer"          => ["-", "=", "≡"]
+        "binary"         => ["010010", "001100", "100101", "111010", "011101", "101011"]
+        "wave"           => ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂"]
+        "simple_dots"    => [".  ", ".. ", "...", "   "]
+        "pulse"          => ["●", "◉", "○", "◉"]
+        _                => ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]    ;; "dots"
+    end
+    return frames
+end
+
+pub fn spinner_names() -> [string] is
+    return [
+        "dots", "dots2", "dots3", "line", "line2", "pipe", "star", "star2",
+        "flip", "hamburger", "grow_vertical", "grow_horiz", "balloon", "noise",
+        "bounce", "box_bounce", "triangle", "arc", "circle", "circle_quarter",
+        "circle_half", "square_corners", "toggle", "arrow", "arrow_circle",
+        "bouncing_bar", "bouncing_ball", "clock", "moon", "earth", "runner",
+        "weather", "hearts", "point", "layer", "binary", "wave",
+        "simple_dots", "pulse",
+    ]
+end
+
+;; Wybiera klatkę `tick` z podanej tablicy (cyklicznie — działa też dla
+;; własnych, w pełni user-defined zestawów, nie tylko wbudowanych nazw).
+pub fn spinner_frame_at(frames: [string], tick: int) -> string is
+    let n: int = array_len(frames)
+    if n <= 0 is return "" end
+    let mut idx: int = tick % n
+    if idx < 0 is idx = idx + n end
+    return frames[idx]
+end
+
+pub fn spinner_frame_count(name: string) -> int is
+    return array_len(spinner_frames(name))
+end
