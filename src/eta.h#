@@ -1,0 +1,87 @@
+mod core
+
+;; eta.h# — szacowanie czasu pozostałego (ETA) i prędkości.
+;;
+;; Prosty wariant (`eta_simple_ms`) liczy jedno globalne tempo "od startu"
+;; — dokładnie tak jak wbudowany pasek `bytes` (ms-na-element * to, co
+;; zostało). Działa dobrze, gdy tempo jest w miarę stałe.
+;;
+;; `SpeedTracker` to wariant "wygładzony" (jak ETA w `indicatif`): trzyma
+;; małe okno ostatnich próbek (czas, pozycja) i liczy tempo tylko z tego
+;; okna, więc nagłe spowolnienie/przyspieszenie nie zostaje "rozmyte" na
+;; cały dotychczasowy czas działania. Użycie jest opcjonalne — zwykłe
+;; `bar_new`/`bar_inc` z bar.h# domyślnie korzystają z wariantu prostego.
+
+;; Proste ETA w milisekundach na podstawie średniego tempa od startu.
+;; Zwraca -1, gdy nie da się jeszcze nic oszacować (0 postępu lub brak total).
+pub fn eta_simple_ms(s: core::ProgressState) -> int is
+    let total: int = core::state_total(s)
+    let current: int = core::state_current(s)
+    if total <= 0 || current <= 0 is return -1 end
+    let elapsed: int = core::state_elapsed_ms(s)
+    let ms_per_item: int = elapsed / current
+    let remaining: int = total - current
+    return ms_per_item * remaining
+end
+
+;; ── Wygładzone tempo — ruchome okno próbek ──────────────────────────────
+
+pub struct SpeedSample is
+    pub at_ms:    int
+    pub position: int
+end
+
+pub struct SpeedTracker is
+    pub samples:     [SpeedSample]
+    pub window_size: int    ;; ile ostatnich próbek trzymać (np. 20)
+end
+
+pub fn speed_tracker_new(window_size: int) -> SpeedTracker is
+    return SpeedTracker { samples: [], window_size: window_size }
+end
+
+;; Dorzuca próbkę (aktualny czas + pozycja) i przycina okno do window_size
+;; najnowszych wpisów.
+pub fn speed_tracker_sample(t: SpeedTracker, position: int) -> SpeedTracker is
+    let mut all: [SpeedSample] = t.samples
+    all.push(SpeedSample { at_ms: time_ms(), position: position })
+
+    let n: int = array_len(all)
+    if n <= t.window_size is
+        return SpeedTracker { samples: all, window_size: t.window_size }
+    end
+
+    let drop: int = n - t.window_size
+    let mut trimmed: [SpeedSample] = []
+    let mut i: int = drop
+    while i < n is
+        trimmed.push(all[i])
+        i += 1
+    end
+    return SpeedTracker { samples: trimmed, window_size: t.window_size }
+end
+
+;; Elementów/sek. liczone tylko z próbek w oknie (pierwsza vs ostatnia).
+;; Zwraca 0.0, gdy w oknie jest za mało danych albo czas się nie zmienił.
+pub fn speed_smoothed(t: SpeedTracker) -> f64 is
+    let n: int = array_len(t.samples)
+    if n < 2 is return 0.0 end
+
+    let first: SpeedSample = t.samples[0]
+    let last:  SpeedSample = t.samples[n - 1]
+    let dt_ms: int = last.at_ms - first.at_ms
+    let dpos:  int = last.position - first.position
+
+    if dt_ms <= 0 || dpos <= 0 is return 0.0 end
+    return (dpos + 0.0) / ((dt_ms + 0.0) / 1000.0)
+end
+
+;; ETA (ms) liczone z wygładzonej prędkości zamiast średniej od startu.
+pub fn eta_smoothed_ms(t: SpeedTracker, current: int, total: int) -> int is
+    let rate: f64 = speed_smoothed(t)
+    if rate <= 0.0 || total <= 0 is return -1 end
+    let remaining: int = total - current
+    if remaining <= 0 is return 0 end
+    let secs: f64 = (remaining + 0.0) / rate
+    return __builtin_conv_float_to_int(secs * 1000.0)
+end
