@@ -1,0 +1,123 @@
+mod core
+mod style
+mod template
+
+;; bar.h# — `ProgressBar`: gotowy do użycia, w pełni skonfigurowany pasek
+;; postępu na jednej linii terminala.
+;;
+;; Najprostsze użycie:
+;;
+;;   let mut pb = bar::bar_new(100, "Pobieranie")
+;;   let mut i = 0
+;;   while i < 100 is
+;;       pb = pb.inc(1)
+;;       pb.draw()
+;;       i += 1
+;;   end
+;;   pb.finish("Gotowe!")
+;;
+;; Jak wszędzie w tej bibliotece: metody NIE mutują `pb` w miejscu — każda
+;; zwraca nowy `ProgressBar`, dlatego `pb = pb.inc(1)` (nie samo `pb.inc(1)`).
+;; Metody czysto "rysujące" (`draw`, `line`, `redraw`, `is_done`) tylko
+;; czytają stan i niczego nie zwracają do przypisania.
+
+pub struct ProgressBar is
+    pub state: core::ProgressState
+    pub sty:   style::ProgressStyle
+end
+
+pub fn bar_new(total: int, label: string) -> ProgressBar is
+    return ProgressBar { state: core::state_new(total, label), sty: style::style_bar() }
+end
+
+pub fn bar_with_style(total: int, label: string, sty: style::ProgressStyle) -> ProgressBar is
+    return ProgressBar { state: core::state_with_width(core::state_new(total, label), style::style_width(sty)), sty: sty }
+end
+
+;; Pasek "nieokreślony" (nie znamy total) — renderuje animację ping-pong
+;; zamiast procentów, patrz theme::theme_render_indeterminate.
+pub fn bar_indeterminate(label: string) -> ProgressBar is
+    return ProgressBar { state: core::state_new(0, label), sty: style::style_bar() }
+end
+
+impl ProgressBar is
+    pub fn inc(self, n: int) -> ProgressBar is
+        return ProgressBar { state: core::state_inc(self.state, n), sty: self.sty }
+    end
+
+    pub fn set(self, pos: int) -> ProgressBar is
+        return ProgressBar { state: core::state_set(self.state, pos), sty: self.sty }
+    end
+
+    pub fn set_message(self, msg: string) -> ProgressBar is
+        return ProgressBar { state: core::state_set_message(self.state, msg), sty: self.sty }
+    end
+
+    pub fn set_label(self, label: string) -> ProgressBar is
+        return ProgressBar { state: core::state_set_label(self.state, label), sty: self.sty }
+    end
+
+    pub fn set_style(self, sty: style::ProgressStyle) -> ProgressBar is
+        return ProgressBar { state: self.state, sty: sty }
+    end
+
+    pub fn set_length(self, total: int) -> ProgressBar is
+        return ProgressBar { state: core::state_set_total(self.state, total), sty: self.sty }
+    end
+
+    ;; Przesuwa animację o klatkę — potrzebne dla pasków nieokreślonych,
+    ;; które renderuje się bez wywoływania `inc` (ono przecież nie ma o co
+    ;; iterować, gdy total == 0).
+    pub fn tick(self) -> ProgressBar is
+        return ProgressBar { state: core::state_tick(self.state), sty: self.sty }
+    end
+
+    ;; Wyrenderowana bieżąca klatka jako zwykły string — do własnego
+    ;; wypisywania, logowania, testów, albo wstawienia do innego layoutu.
+    ;; (Tryb nieokreślony jest obsłużony wewnątrz template.h#'s {bar} —
+    ;; nie trzeba tu niczego specjalnie rozróżniać.)
+    pub fn line(self) -> string is
+        return template::render(style::style_template(self.sty), self.state, self.sty)
+    end
+
+    ;; Rysuje bieżącą klatkę w miejscu (nadpisuje linię przez `\r`) —
+    ;; standardowy tryb pracy w pętli: `pb = pb.inc(1); pb.draw()`.
+    pub fn draw(self) is
+        io_print("\r" + self.line() + "                    ")
+    end
+
+    ;; Ponownie rysuje pasek BEZ zmiany postępu — do przywracania go na
+    ;; ekranie po tym, jak `clear()` zrobił miejsce na wstawioną linię logu.
+    pub fn redraw(self) is
+        self.draw()
+    end
+
+    ;; Czyści bieżącą linię (miejsce na "prawdziwy", stały log obok paska).
+    pub fn clear(self) is
+        io_print("\r" + string_repeat(" ", 120) + "\r")
+    end
+
+    pub fn is_done(self) -> bool is
+        return core::state_is_done(self.state)
+    end
+
+    ;; Domyka pasek do 100%, wypisuje finalną linię + komunikat sukcesu
+    ;; i przechodzi do nowej linii (tak jak `bar_finish` w `bytes`).
+    pub fn finish(self, msg: string) -> ProgressBar is
+        let done: ProgressBar = ProgressBar { state: core::state_finish(self.state), sty: self.sty }
+        io_print("\r" + done.line() + "                    ")
+        write("")
+        write("  \x1b[32m\x1b[1m✓\x1b[0m \x1b[1m" + msg + "\x1b[0m")
+        return done
+    end
+
+    ;; Kończy pasek BEZ dociągania do 100% i z czerwonym znacznikiem —
+    ;; do sygnalizowania błędu/przerwania (`abandon()` z indicatif).
+    pub fn abandon(self, msg: string) -> ProgressBar is
+        let done: ProgressBar = ProgressBar { state: core::state_abandon(self.state), sty: self.sty }
+        io_print("\r" + done.line() + "                    ")
+        write("")
+        write("  \x1b[31m\x1b[1m✗\x1b[0m \x1b[1m" + msg + "\x1b[0m")
+        return done
+    end
+end
