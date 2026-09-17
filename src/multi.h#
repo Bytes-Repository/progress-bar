@@ -1,0 +1,142 @@
+mod bar
+
+;; multi.h# — kilka pasków postępu rysowanych naraz, jeden pod drugim,
+;; zawsze "przypiętych" do ostatnich N linii terminala — dokładnie ten sam
+;; pomysł co `MultiBar` w `bytes` (bytes/src/progress.h#), tylko uogólniony
+;; z 3 stałych wierszy (status/pasek/akcja) na dowolną liczbę niezależnych
+;; pasków. Idealne do np. równoległego pobierania kilku plików naraz.
+;;
+;; Użycie:
+;;
+;;   let mut mp = multi::multi_new()
+;;   mp = mp.add(bar::bar_new(100, "plik-a.zip"))
+;;   mp = mp.add(bar::bar_new(200, "plik-b.zip"))
+;;   mp = mp.draw()             ;; pierwsze narysowanie obu pasków
+;;
+;;   mp = mp.inc(0, 10)         ;; awansuj pasek #0 i przerysuj cały blok
+;;   mp = mp.log("plik-a.zip: nawiązano połączenie")   ;; log NAD blokiem
+;;
+;;   mp = mp.finish_all("Wszystkie pliki pobrane")
+
+pub struct MultiProgress is
+    pub bars:  [bar::ProgressBar]
+    pub drawn: bool
+end
+
+pub fn multi_new() -> MultiProgress is
+    return MultiProgress { bars: [], drawn: false }
+end
+
+;; Rysuje wszystkie N pasków od bieżącej pozycji kursora w dół — bez
+;; wcześniejszego "skoku w górę". Używane zarówno przez zwykłe `draw()`
+;; (po skoku), jak i przez `log()` (który już stoi w dobrym miejscu).
+fn multi_paint(m: MultiProgress) is
+    let n: int = array_len(m.bars)
+    let mut i: int = 0
+    while i < n is
+        let current: bar::ProgressBar = m.bars[i]
+        let line: string = current.line()
+        if i == n - 1 is
+            io_print("\r\x1b[0K" + line)
+        else is
+            io_print("\r\x1b[0K" + line + "\n")
+        end
+        i += 1
+    end
+end
+
+;; Zwraca nową tablicę z elementem pod `idx` podmienionym na `val` — H#
+;; nie ma tu składni `arr[i] = x` na tablicy przekazanej przez wartość,
+;; więc budujemy nową tablicę przez przepisanie (ten sam koszt co gdziekolwiek
+;; indziej w tej bibliotece: "zwróć nową wartość zamiast mutować").
+fn bars_replace(bars: [bar::ProgressBar], idx: int, val: bar::ProgressBar) -> [bar::ProgressBar] is
+    let n: int = array_len(bars)
+    let mut out: [bar::ProgressBar] = []
+    let mut i: int = 0
+    while i < n is
+        if i == idx is
+            out.push(val)
+        else is
+            out.push(bars[i])
+        end
+        i += 1
+    end
+    return out
+end
+
+impl MultiProgress is
+    pub fn add(self, pb: bar::ProgressBar) -> MultiProgress is
+        let mut bars: [bar::ProgressBar] = self.bars
+        bars.push(pb)
+        return MultiProgress { bars: bars, drawn: self.drawn }
+    end
+
+    pub fn count(self) -> int is
+        return array_len(self.bars)
+    end
+
+    pub fn get(self, idx: int) -> bar::ProgressBar is
+        return self.bars[idx]
+    end
+
+    pub fn update(self, idx: int, pb: bar::ProgressBar) -> MultiProgress is
+        return MultiProgress { bars: bars_replace(self.bars, idx, pb), drawn: self.drawn }
+    end
+
+    ;; Awansuje pasek `idx` o `n` i od razu przerysowuje cały blok — to
+    ;; jest metoda, po którą sięgniesz najczęściej w pętli pobierania.
+    pub fn inc(self, idx: int, n: int) -> MultiProgress is
+        let current: bar::ProgressBar = self.bars[idx]
+        let updated: bar::ProgressBar = current.inc(n)
+        return self.update(idx, updated).draw()
+    end
+
+    ;; (Ponowne) narysowanie całego bloku. Pierwsze wywołanie po prostu
+    ;; drukuje N linii; kolejne najpierw wracają kursorem na sam początek
+    ;; bloku (`\x1b[NA`, gdzie N = liczba wierszy - 1, bo kursor stoi na
+    ;; ostatnim wierszu po poprzednim rysowaniu bez końcowego \n).
+    pub fn draw(self) -> MultiProgress is
+        let n: int = array_len(self.bars)
+        if self.drawn && n > 1 is
+            io_print("\x1b[" + to_string(n - 1) + "A")
+        end
+        multi_paint(self)
+        return MultiProgress { bars: self.bars, drawn: true }
+    end
+
+    ;; Wypisuje PRAWDZIWĄ, trwałą linię (ostrzeżenie, "gotowe: x.zip")
+    ;; bezpośrednio NAD blokiem, po czym stawia blok z powrotem pod nią —
+    ;; bez przeplatania jej z animacją, tak jak `multibar_log` w `bytes`.
+    pub fn log(self, line: string) -> MultiProgress is
+        let n: int = array_len(self.bars)
+        if self.drawn && n > 0 is
+            io_print("\x1b[" + to_string(n - 1) + "A")
+            let mut i: int = 0
+            while i < n is
+                io_print("\r\x1b[0K\n")
+                i += 1
+            end
+            io_print("\x1b[" + to_string(n) + "A")
+        end
+        write(line)
+        multi_paint(self)
+        return MultiProgress { bars: self.bars, drawn: true }
+    end
+
+    ;; Zamyka cały blok i zostawia jedną, trwałą linię z podsumowaniem —
+    ;; odpowiednik `bar_finish`/`multibar_finish`, tylko dla wielu pasków.
+    pub fn finish_all(self, msg: string) -> MultiProgress is
+        let n: int = array_len(self.bars)
+        if self.drawn && n > 0 is
+            io_print("\x1b[" + to_string(n - 1) + "A")
+            let mut i: int = 0
+            while i < n is
+                io_print("\r\x1b[0K\n")
+                i += 1
+            end
+            io_print("\x1b[" + to_string(n) + "A")
+        end
+        write("  \x1b[32m\x1b[1m✓\x1b[0m \x1b[1m" + msg + "\x1b[0m")
+        return MultiProgress { bars: [], drawn: false }
+    end
+end
