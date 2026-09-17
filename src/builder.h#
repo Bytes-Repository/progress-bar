@@ -1,0 +1,68 @@
+mod style
+mod bar
+mod spinner
+
+;; builder.h# — najwygodniejsze wejście do biblioteki, gdy nie chce się
+;; osobno budować `ProgressStyle` i dopiero z niego `ProgressBar`.
+;;
+;;   let pb = builder::new_bar(100, "Instalacja")
+;;       .theme("blocks")
+;;       .template("{label} {bar} {percent}%  {msg}")
+;;       .width(30)
+;;       .build()
+;;
+;; `ProgressBuilder` to zwykły, niemutowalny struct-builder — każda metoda
+;; zwraca zmodyfikowaną kopię, `.build()` na końcu zamienia go w gotowy
+;; `bar::ProgressBar` (albo `spinner::Spinner` przez `.build_spinner()`).
+
+pub struct ProgressBuilder is
+    pub total: int
+    pub label: string
+    pub sty:   style::ProgressStyle
+end
+
+pub fn new_bar(total: int, label: string) -> ProgressBuilder is
+    return ProgressBuilder { total: total, label: label, sty: style::style_bar() }
+end
+
+pub fn new_spinner(label: string) -> ProgressBuilder is
+    return ProgressBuilder { total: 0, label: label, sty: style::style_spinner() }
+end
+
+pub fn new_download(label: string) -> ProgressBuilder is
+    return ProgressBuilder { total: 0, label: label, sty: style::style_download() }
+end
+
+impl ProgressBuilder is
+    pub fn theme(self, name: string) -> ProgressBuilder is
+        return ProgressBuilder { total: self.total, label: self.label, sty: self.sty.with_theme(name) }
+    end
+
+    pub fn template(self, tpl: string) -> ProgressBuilder is
+        return ProgressBuilder { total: self.total, label: self.label, sty: self.sty.with_template(tpl) }
+    end
+
+    pub fn spinner_style(self, name: string) -> ProgressBuilder is
+        return ProgressBuilder { total: self.total, label: self.label, sty: self.sty.with_spinner(name) }
+    end
+
+    pub fn width(self, w: int) -> ProgressBuilder is
+        return ProgressBuilder { total: self.total, label: self.label, sty: self.sty.with_width(w) }
+    end
+
+    pub fn no_color(self) -> ProgressBuilder is
+        return ProgressBuilder { total: self.total, label: self.label, sty: self.sty.no_color() }
+    end
+
+    pub fn length(self, total: int) -> ProgressBuilder is
+        return ProgressBuilder { total: total, label: self.label, sty: self.sty }
+    end
+
+    pub fn build(self) -> bar::ProgressBar is
+        return bar::bar_with_style(self.total, self.label, self.sty)
+    end
+
+    pub fn build_spinner(self) -> spinner::Spinner is
+        return spinner::spinner_with_style(self.label, style::style_spinner_name(self.sty))
+    end
+end
