@@ -1,0 +1,92 @@
+mod core
+mod spinner_frames
+
+;; spinner.h# — animowany spinner dla zadań, których długości nie znamy
+;; (połączenie sieciowe, git clone, kompilacja...). Zachowuje się jak
+;; wbudowany `Spinner` z `bytes` (spinner_new/spinner_tick/spinner_finish w
+;; bytes/src/progress.h#), tylko z całą galerią stylów z
+;; spinner_frames.h# zamiast jednego, na stałe wpisanego zestawu klatek.
+;;
+;; Użycie:
+;;
+;;   use "std -> time" from "t"
+;;
+;;   let mut sp = spinner::spinner_new("Łączenie z serwerem…")
+;;   while !polaczono is
+;;       sp = sp.tick()
+;;       sp.draw()
+;;       t::sleep_ms(80)
+;;   end
+;;   sp.finish("Połączono!")
+
+pub struct Spinner is
+    pub state:         core::ProgressState
+    pub name:          string      ;; nazwa zestawu klatek — spinner_frames.h#, albo "custom"
+    pub color:         string      ;; kod koloru ANSI (np. "36" = cyan), "" = brak koloru
+    pub custom_frames: [string]    ;; używane tylko gdy name == "custom" — patrz spinner_custom()
+end
+
+pub fn spinner_new(msg: string) -> Spinner is
+    return Spinner { state: core::state_set_message(core::state_new(0, ""), msg), name: "dots", color: "36", custom_frames: [] }
+end
+
+pub fn spinner_with_style(msg: string, frame_set: string) -> Spinner is
+    return Spinner { state: core::state_set_message(core::state_new(0, ""), msg), name: frame_set, color: "36", custom_frames: [] }
+end
+
+;; Własny, w pełni dowolny zestaw klatek — dowolne stringi (emoji, ASCII-art,
+;; nawet wielokrokowe frazy), np. `spinner_custom("Budowanie…", ["[.  ]", "[.. ]", "[...]", "[ ..]", "[  .]"])`.
+pub fn spinner_custom(msg: string, frames: [string]) -> Spinner is
+    return Spinner { state: core::state_set_message(core::state_new(0, ""), msg), name: "custom", color: "36", custom_frames: frames }
+end
+
+impl Spinner is
+    pub fn tick(self) -> Spinner is
+        return Spinner { state: core::state_tick(self.state), name: self.name, color: self.color, custom_frames: self.custom_frames }
+    end
+
+    pub fn set_message(self, msg: string) -> Spinner is
+        return Spinner { state: core::state_set_message(self.state, msg), name: self.name, color: self.color, custom_frames: self.custom_frames }
+    end
+
+    pub fn set_style(self, frame_set: string) -> Spinner is
+        return Spinner { state: self.state, name: frame_set, color: self.color, custom_frames: self.custom_frames }
+    end
+
+    pub fn set_custom_frames(self, frames: [string]) -> Spinner is
+        return Spinner { state: self.state, name: "custom", color: self.color, custom_frames: frames }
+    end
+
+    pub fn set_color(self, ansi_code: string) -> Spinner is
+        return Spinner { state: self.state, name: self.name, color: ansi_code, custom_frames: self.custom_frames }
+    end
+
+    pub fn frame(self) -> string is
+        if self.name == "custom" is
+            return spinner_frames::spinner_frame_at(self.custom_frames, core::state_tick_count(self.state))
+        end
+        let frames: [string] = spinner_frames::spinner_frames(self.name)
+        return spinner_frames::spinner_frame_at(frames, core::state_tick_count(self.state))
+    end
+
+    pub fn line(self) -> string is
+        let glyph: string = self.frame()
+        if self.color == "" is
+            return glyph + " " + core::state_message(self.state)
+        end
+        return "\x1b[" + self.color + "m" + glyph + "\x1b[0m " + core::state_message(self.state)
+    end
+
+    ;; Rysuje bieżącą klatkę w miejscu — wywołuj po każdym `tick()`.
+    pub fn draw(self) is
+        io_print("\r  " + self.line() + "                    ")
+    end
+
+    pub fn finish(self, done_msg: string) is
+        io_print("\r  \x1b[32m✓\x1b[0m " + done_msg + "                    \n")
+    end
+
+    pub fn fail(self, err_msg: string) is
+        io_print("\r  \x1b[31m✗\x1b[0m " + err_msg + "                    \n")
+    end
+end
